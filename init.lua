@@ -250,6 +250,8 @@ vim.keymap.set("n", "<C-j>", "<C-w>j")
 vim.keymap.set("n", "<C-l>", "<C-w>l")
 vim.keymap.set("n", "<C-h>", "<C-w>h")
 
+vim.keymap.set("n", "<leader>&", "<C-^>", { desc = "Jump to previous file" })
+
 -- Auto brackets
 local function create_pair(opening, closing)
     local function create_opener()
@@ -289,59 +291,14 @@ create_pair("[", "]")
 create_pair("\"", "\"")
 create_pair("'", "'")
 
-local current_window = 0
-local last_window = 0
-local last_buffer = 0
-local window_focus = 0
-
--- Move to previously visited buffer
-vim.keymap.set("n", "<leader>&", function()
-    if vim.w.purr_last_buffer then
-        vim.cmd.buffer(vim.w.purr_last_buffer)
-    end
-end)
-
-
 if vim.g.purr_registered_commands == nil then
-    vim.api.nvim_create_autocmd("VimEnter", {
-        callback = function(ev)
-            current_window = vim.api.nvim_get_current_win()
-            last_window = current_window
-            window_focus = current_window
-        end
-    })
-    vim.api.nvim_create_autocmd("WinEnter", {
-        callback = function()
-            current_window = vim.api.nvim_get_current_win()
-        end
-    })
-    vim.api.nvim_create_autocmd("WinLeave", {
-        callback = function(ev)
-            last_window = vim.api.nvim_get_current_win()
-        end
-    })
-    vim.api.nvim_create_autocmd("BufLeave", {
-        callback = function(ev)
-            last_buffer = ev.buf
-            local cur = vim.api.nvim_win_get_cursor(0)
-        end
-    })
-    vim.api.nvim_create_autocmd("BufEnter", {
-        callback = function(ev)
-            if window_focus == current_window then
-                vim.w.purr_last_buffer = last_buffer
-            end
-            window_focus = current_window
-        end
-    })
-
     vim.api.nvim_create_autocmd("FileType", {
         pattern = "qf",
         callback = function()
             vim.keymap.set("n", "<C-CR>", "<cr><cmd>lclose<cr><cmd>cclose<cr>",
             { buffer = true, silent = true, desc = "Open entry and close location list" })
 
-            vim.keymap.set("n", "q", "<cmd>bd<cr>", { silent = true, buffer = true })
+            vim.keymap.set("n", "q", "<cmd>bd<cr>", { silent = true, buffer = true, desc = "Close quick list"})
         end
     })
     vim.api.nvim_create_autocmd("BufNew", {
