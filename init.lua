@@ -1,5 +1,7 @@
 -- TODO(purrie): Get binding for quickly turning one line struct declaration to multiline.
+-- TODO(purrie): Get binding to redo last fzf search
 
+local home_dir = vim.uv.os_homedir()
 -- Behavior
 vim.g.zig_fmt_autosave = 0
 vim.opt.exrc = true
@@ -8,7 +10,7 @@ vim.opt.signcolumn = "yes"
 vim.opt.incsearch = true
 vim.opt.swapfile = false
 vim.opt.backup = false
-vim.opt.undodir = os.getenv("HOME") .. "/.cache/vim/undo"
+vim.opt.undodir = home_dir .. "/.cache/vim/undo"
 vim.opt.undofile = true
 vim.opt.updatetime = 50
 vim.opt.tabstop = 4
@@ -16,11 +18,14 @@ vim.opt.softtabstop = 4
 vim.opt.shiftwidth = 4
 vim.opt.expandtab = true
 vim.opt.foldmethod = "indent"
+vim.opt.cpoptions = "aABceFs_I"
+vim.opt.cinoptions = "L0,:0,l1,b1,t0,(0,Ws,m1"
+vim.opt.cinkeys = "0{,0},0),0],:,;,!^F,o,O,e"
 
 -- Allow external programs to communicate with vim through pipe
 local pipepath = vim.fn.stdpath("cache") .. "/server.pipe"
 if not vim.loop.fs_stat(pipepath) then
-  vim.fn.serverstart(pipepath)
+  pcall(vim.fn.serverstart, pipepath)
 end
 
 -- Appearance
@@ -31,16 +36,25 @@ vim.opt.cursorline = true
 vim.opt.cursorcolumn = true
 vim.opt.nu = true
 vim.opt.relativenumber = true
-vim.opt.wrap = true
 vim.opt.hlsearch = true
+vim.opt.wrap = true
+vim.opt.linebreak = true
+vim.opt.breakindent = true
+vim.opt.breakat = " ,"
+vim.opt.breakindentopt = "shift:4,list:4"
 
-vim.api.nvim_set_hl(0, "Normal", { fg = "#ffffff", bg = 'none'  })
-vim.api.nvim_set_hl(0, "Identifier", { fg = "#ffffff", bg = 'none'  })
-vim.api.nvim_set_hl(0, "Function", { fg = "#ffaa88", bg = 'none'  })
-vim.api.nvim_set_hl(0, "Special", { fg = "#aa88ff", bg = 'none'  })
-vim.api.nvim_set_hl(0, "CursorLine", { fg = "none", bg = 'none', bold = true })
-vim.api.nvim_set_hl(0, "CursorColumn", { fg = "none", bg = 'none', bold = true })
-vim.api.nvim_set_hl(0, "Folded", { fg = "#a0a0a0", bg = 'none' })
+vim.api.nvim_set_hl(0, "Normal",       { fg = "#ffffff", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Identifier",   { fg = "#ffffff", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Constant",     { fg = "#abcdef", bg = 'none'  })
+vim.api.nvim_set_hl(0, "String",       { fg = "#dadead", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Function",     { fg = "#dcedff", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Special",      { fg = "#badbee", bg = 'none'  })
+vim.api.nvim_set_hl(0, "PreProc",      { fg = "#dabeef", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Statement",    { fg = "#ffbada", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Todo",         { fg = "#8888ff", bg = 'none'  })
+vim.api.nvim_set_hl(0, "CursorLine",   { fg = "none",    bg = 'none', bold = true })
+vim.api.nvim_set_hl(0, "CursorColumn", { fg = "none",    bg = 'none', bold = true })
+vim.api.nvim_set_hl(0, "Folded",       { fg = "#a0a0a0", bg = 'none'  })
 
 -- utility functions
 local function fzfOpenBuffers()
@@ -71,7 +85,7 @@ local function fzfProjectFiles(dir)
         dir = dir,
         source = "rg --hidden --files --glob '!.git' --glob '!.hg' --glob '!.zig-cache' .",
         sink = "e",
-        options = "--preview 'cat {}' --ansi --layout=reverse"
+        options = "--preview 'cat {}' --ansi --layout=reverse --cycle"
     }
     vim.fn['fzf#run'](opts)
 end
@@ -80,11 +94,13 @@ local function fzfInCurrentBuffer(query)
         local line_number, line_text = arg:match("^%s-(%S+)%s+(.+)")
         vim.fn.cursor(tonumber(line_number), 0)
     end
+
     local bufname = vim.api.nvim_buf_get_name(0)
-    local options = "--layout=reverse -e"
+    local options = "--layout=reverse -e --cycle"
     if query then
         options = options .. " --query=" .. vim.fn.shellescape(query)
     end
+
     local opts = {
         source = "cat -n " .. bufname,
         sink = goToLine,
@@ -100,12 +116,13 @@ local function fzfInProject(query, dir)
         column = tonumber(column)
         vim.fn.cursor(line, column)
     end
-    local options = "--layout=reverse --ansi --bind 'change:reload:rg -n --column --smart-case {q}'"
+    local search_command = "rg -n --smart-case --column --engine=pcre2 "
+    local options = "--layout=reverse --ansi --cycle --bind 'change:reload:" .. search_command .. "-e {q}'"
     local source = {}
     if query then
         local escaped_query = vim.fn.shellescape(query)
         options = options .. " --query=" .. escaped_query
-        source = "rg -n --smart-case --column " .. escaped_query 
+        source = search_command .. "-e " .. escaped_query 
     end
     local opts = {
         source = source,
@@ -121,7 +138,8 @@ local function exitToNormalMode()
     vim.cmd("normal! " .. esc)
 end
 local function pipeSelectionTo(fun)
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "v", true)
+    local escaped = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+    vim.api.nvim_feedkeys(escaped, "v", true)
     vim.defer_fn(function()
         local start = vim.fn.getpos("'<")
         local ending = vim.fn.getpos("'>")
@@ -187,16 +205,37 @@ local function alignToCharacter(extra_spaces)
         end
     end)
 end
+local function commandMake()
+    vim.ui.input({ prompt = "Command > " },
+    function(input)
+        if input == nil or #input == 0 then return end
+        vim.opt.makeprg = input
+        vim.cmd.make()
+    end)
+end
+local function grepForThing()
+    exitToNormalMode()
+    local start = vim.fn.getpos("'<")
+    local ending = vim.fn.getpos("'>")
+    local region = vim.fn.getregion(start, ending)
+    local text = ""
+    for _, r in ipairs(region) do 
+        text = text .. r
+    end
+    vim.cmd("vim " .. text .. " **")
+end
 
 -- Keybindings
 -- NOTE: <leader>p namespace is reserved for project shortcuts defined in .nvim.lua
+-- NOTE: <localleader> namespace is for file type specific key bindings.
 vim.g.mapleader = " "
 vim.g.maplocalleader = " m"
 
 vim.keymap.set("n", "<leader>.", fzfProjectFiles, { desc = "Edit file" })
 vim.keymap.set("n", "<leader>,", fzfOpenBuffers, { desc = "Edit open file" })
 
-vim.keymap.set("n", "<leader>c", vim.cmd.make, { desc = "Run make command" })
+vim.keymap.set("n", "<leader>C", vim.cmd.make, { desc = "Run make command" })
+vim.keymap.set("n", "<leader>c", commandMake, { desc = "Input make command" })
 
 vim.keymap.set("n", "<leader>qq", "<cmd>qa<cr>", { desc = "Exit Vim" })
 vim.keymap.set("n", "<leader>qQ", "<cmd>qa!<cr>", { desc = "Force exit vim" })
@@ -208,6 +247,8 @@ vim.keymap.set("n", "<leader>sP", "viw<leader>sp", { remap = true })
 vim.keymap.set("n", "<leader>sd", vim.cmd.nohlsearch, { desc = "Disable search highlight"})
 vim.keymap.set("v", "<leader>ss", function() pipeSelectionTo(fzfInCurrentBuffer) end, { desc = "Search current buffer" })
 vim.keymap.set("v", "<leader>sp", function() pipeSelectionTo(fzfInProject) end, { desc = "Search current buffer" })
+vim.keymap.set("v", "<leader>sg", grepForThing, { desc = "Grep current root folder" })
+vim.keymap.set("n", "<leader>sg", "viw<leader>sg", { desc = "Grep for thing under cursor", remap = true })
 
 vim.keymap.set("n", "<leader>by", "m'gg\"+yG''", { desc = "Yank Buffer" })
 vim.keymap.set("n", "<leader>bn", vim.cmd.bn, { desc = "Next buffer" })
@@ -219,6 +260,8 @@ vim.keymap.set({"v", "n"}, "<leader>ey", "\"+y", { desc = "Yank to xClip" })
 vim.keymap.set("x", "<leader>ep", "\"_dP", { desc = "Paste w/o overriding register" })
 vim.keymap.set("v", "<leader>eL", alignToCharacter, { desc = "Align lines" })
 vim.keymap.set("v", "<leader>el", function() alignToCharacter(true) end, { desc = "Align lines" })
+vim.keymap.set("n", "<leader>ec", "yyp<cmd>.!calc -p<enter>", { desc = "Perform math calculation on current line" })
+vim.keymap.set("n", "<leader>ek", "ky$jhp", { desc = "Copy from line above" })
 
 vim.keymap.set("n", "<leader>fs", "<cmd>w<cr>", { desc = "Save" })
 vim.keymap.set("n", "<leader>fS", "<cmd>wa<cr>", { desc = "Save all changes" })
@@ -231,9 +274,10 @@ vim.keymap.set("n", "<A-j>", ":m .+1<cr>==", { desc = "Move line down", silent =
 
 vim.keymap.set("v", "<A-k>", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
 vim.keymap.set("v", "<A-j>", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
+vim.keymap.set("v", ">", ">gv", { desc = "Indent deeper", silent = true })
+vim.keymap.set("v", "<", "<gv", { desc = "Indent shallower", silent = true })
 
 -- Navigation
-vim.keymap.set({ "n", "v" }, "#", "_", { desc = "Back to indentation" })
 vim.keymap.set("i", "<C-e>", "<End>", { desc = "Go to line ending" })
 vim.keymap.set("i", "<C-a>", "<cmd>norm _<cr>", { desc = "Go to line start" })
 vim.keymap.set("i", "<C-f>", "<right>", { desc = "Character forward" })
@@ -252,46 +296,11 @@ vim.keymap.set("n", "<C-h>", "<C-w>h")
 
 vim.keymap.set("n", "<leader>&", "<C-^>", { desc = "Jump to previous file" })
 
--- Auto brackets
-local function create_pair(opening, closing)
-    local function create_opener()
-        local pos = vim.fn.getcursorcharpos()
-        local row = pos[2]
-        local col = pos[3]
-        local line = vim.fn.getline(row)
-        local next_char = line:sub(col, col) or ""
-        if vim.stricmp(next_char, opening) ~= 0 then
-            line = line:sub(0, col - 1) .. opening .. closing .. line:sub(col)
-            vim.fn.setline(row, line)
-        end
-        vim.fn.setcursorcharpos(row, col + 1)
-    end
-    local function create_closer()
-        local pos = vim.fn.getcursorcharpos()
-        local row = pos[2]
-        local col = pos[3]
-        local line = vim.fn.getline(row)
-        local next_char = line:sub(col, col) or ""
-        if vim.stricmp(next_char, closing) ~= 0 then
-            if vim.stricmp(opening, closing) == 0 then
-                line = line:sub(0, col - 1) .. opening .. closing .. line:sub(col)
-            else
-                line = line:sub(0, col - 1) .. closing .. line:sub(col)
-            end
-            vim.fn.setline(row, line)
-        end
-        vim.fn.setcursorcharpos(row, col + 1)
-    end
-    vim.keymap.set("i", opening, create_opener)
-    vim.keymap.set("i", closing, create_closer)
-end
-create_pair("(", ")")
-create_pair("{", "}")
-create_pair("[", "]")
-create_pair("\"", "\"")
-create_pair("'", "'")
+local left_key = vim.api.nvim_replace_termcodes("<left>", true, false, true)
+local right_key = vim.api.nvim_replace_termcodes("<right>", true, false, true)
 
 if vim.g.purr_registered_commands == nil then
+    vim.g.purr_registered_commands = true
     vim.api.nvim_create_autocmd("FileType", {
         pattern = "qf",
         callback = function()
@@ -301,25 +310,73 @@ if vim.g.purr_registered_commands == nil then
             vim.keymap.set("n", "q", "<cmd>bd<cr>", { silent = true, buffer = true, desc = "Close quick list"})
         end
     })
-    vim.api.nvim_create_autocmd("BufNew", {
-        callback = function(ev)
-            if #ev.file > 0 then
-                local dir = nil
 
-                if string.sub(ev.file, -3) == "zig" then
-                    dir = os.getenv("HOME") .. "/opt/zig/lib/std"
-                elseif string.sub(ev.file, -4) == "odin" then
-                    dir = os.getenv("HOME") .. "/opt/odin"
-                end
+    vim.api.nvim_create_autocmd("FileType", {
+        pattern = "c",
+        callback = function(env)
+            vim.keymap.set("n", "<localleader>t", "<cmd>!ctags **.c **.h<cr>", { desc = "Setup ctags", buffer = env.bufnr })
+        end
+    })
 
-                if dir then
-                    vim.keymap.set("n", "<localleader>ss", function() fzfInProject(nil, dir) end, { buffer = ev.bufnr, desc = "Search text in standard libraries" })
-                    vim.keymap.set("v", "<localleader>ss", function() pipeSelectionTo(function(sel) fzfInProject(sel, dir) end) end, { buffer = ev.bufnr, desc = "Search text in standard libraries" })
-                    vim.keymap.set("n", "<localleader>sf", function() fzfProjectFiles(dir) end, { buffer = ev.bufnr, desc = "Search for file in standard libraries" })
-                end
+    vim.api.nvim_create_autocmd("FileType", {
+        pattern = "zig",
+        callback = function(env)
+            local dir = home_dir .. "/opt/zig/lib/std"
+
+            vim.keymap.set("n", "<localleader>ss", function() fzfInProject(nil, dir) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
+            vim.keymap.set("v", "<localleader>ss", function() pipeSelectionTo(function(sel) fzfInProject(sel, dir) end) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
+            vim.keymap.set("n", "<localleader>sf", function() fzfProjectFiles(dir) end, { buffer = env.bufnr, desc = "Search for file in standard libraries" })
+            vim.keymap.set("n", "<localleader>t", "<cmd>!ztags **.zig " .. home_dir .. "/opt/zig/lib/std/**.zig<cr>", { desc = "Setup ctags", buffer = env.bufnr })
+        end
+    })
+
+    vim.api.nvim_create_autocmd("FileType", {
+        pattern = "odin",
+        callback = function(env) 
+            local dir = home_dir .. "/opt/odin"
+
+            vim.keymap.set("n", "<localleader>ss", function() fzfInProject(nil, dir) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
+            vim.keymap.set("v", "<localleader>ss", function() pipeSelectionTo(function(sel) fzfInProject(sel, dir) end) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
+            vim.keymap.set("n", "<localleader>sf", function() fzfProjectFiles(dir) end, { buffer = env.bufnr, desc = "Search for file in standard libraries" })
+        end
+    })
+
+    vim.api.nvim_create_autocmd("InsertCharPre", {
+        callback = function ()
+            local inserted = vim.v.char
+            local closing = inserted
+            local modify_insert = true
+            if inserted == "{" then
+                closing = "}"
+            elseif inserted == "[" then
+                closing = "]"
+            elseif inserted == "(" then
+                closing = ")"
+            elseif inserted == "'" or inserted == '"' then
+            elseif inserted == "]" or inserted == ")" or inserted == "}" then
+                modify_insert = false
+            else
+                return
+            end
+
+            local pos = vim.fn.getcursorcharpos()
+            local row = pos[2]
+            local col = pos[3]
+            local line = vim.fn.getline(row)
+            local next_char = line:sub(col, col) or ""
+
+            if next_char == closing and closing == inserted then
+                vim.v.char = ""
+                vim.schedule(function()
+                    vim.api.nvim_feedkeys(right_key, "t", true)
+                end)
+            elseif modify_insert then
+                vim.v.char = inserted .. closing
+                vim.schedule(function()
+                    vim.api.nvim_feedkeys(left_key, "t", true)
+                end)
             end
         end
     })
-    vim.g.purr_registered_commands = true
 end
 
