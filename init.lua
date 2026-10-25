@@ -48,6 +48,7 @@ vim.api.nvim_set_hl(0, "Identifier",   { fg = "#ffffff", bg = 'none'  })
 vim.api.nvim_set_hl(0, "Constant",     { fg = "#abcdef", bg = 'none'  })
 vim.api.nvim_set_hl(0, "String",       { fg = "#dadead", bg = 'none'  })
 vim.api.nvim_set_hl(0, "Function",     { fg = "#dcedff", bg = 'none'  })
+vim.api.nvim_set_hl(0, "Type",         { fg = "#dcedff", bg = 'none'  })
 vim.api.nvim_set_hl(0, "Special",      { fg = "#badbee", bg = 'none'  })
 vim.api.nvim_set_hl(0, "PreProc",      { fg = "#dabeef", bg = 'none'  })
 vim.api.nvim_set_hl(0, "Statement",    { fg = "#ffbada", bg = 'none'  })
@@ -116,7 +117,7 @@ local function fzfInProject(query, dir)
         column = tonumber(column)
         vim.fn.cursor(line, column)
     end
-    local search_command = "rg -n --smart-case --column --engine=pcre2 "
+    local search_command = "rg -n --smart-case --column --engine=pcre2 --glob '!tags' "
     local options = "--layout=reverse --ansi --cycle --bind 'change:reload:" .. search_command .. "-e {q}'"
     local source = {}
     if query then
@@ -206,14 +207,13 @@ local function alignToCharacter(extra_spaces)
     end)
 end
 local function commandMake()
-    vim.ui.input({ prompt = "Command > " },
-    function(input)
+    vim.ui.input({ prompt = "Command > " }, function(input)
         if input == nil or #input == 0 then return end
         vim.opt.makeprg = input
         vim.cmd.make()
     end)
 end
-local function grepForThing()
+local function grepForSelection(files)
     exitToNormalMode()
     local start = vim.fn.getpos("'<")
     local ending = vim.fn.getpos("'>")
@@ -222,10 +222,16 @@ local function grepForThing()
     for _, r in ipairs(region) do 
         text = text .. r
     end
-    vim.cmd("vim " .. text .. " **")
+    local target = files or vim.b.purr_default_grep_target or "**"
+    vim.cmd("vim " .. text .. " " .. target)
+end
+local function grepForWord(files, word) 
+    if word == nil or #word == 0 then return end
+    local target = files or vim.b.purr_default_grep_target or "**"
+    vim.cmd("vim " .. word .. " " .. target)
 end
 
--- Keybindings
+-- keybindings
 -- NOTE: <leader>p namespace is reserved for project shortcuts defined in .nvim.lua
 -- NOTE: <localleader> namespace is for file type specific key bindings.
 vim.g.mapleader = " "
@@ -240,6 +246,7 @@ vim.keymap.set("n", "<leader>c", commandMake, { desc = "Input make command" })
 vim.keymap.set("n", "<leader>qq", "<cmd>qa<cr>", { desc = "Exit Vim" })
 vim.keymap.set("n", "<leader>qQ", "<cmd>qa!<cr>", { desc = "Force exit vim" })
 
+-- search utilities
 vim.keymap.set("n", "<leader>ss", fzfInCurrentBuffer, { desc = "Search current buffer" })
 vim.keymap.set("n", "<leader>sS", "viw<leader>ss", { remap = true })
 vim.keymap.set("n", "<leader>sp", fzfInProject, { desc = "Search current directory" })
@@ -247,14 +254,17 @@ vim.keymap.set("n", "<leader>sP", "viw<leader>sp", { remap = true })
 vim.keymap.set("n", "<leader>sd", vim.cmd.nohlsearch, { desc = "Disable search highlight"})
 vim.keymap.set("v", "<leader>ss", function() pipeSelectionTo(fzfInCurrentBuffer) end, { desc = "Search current buffer" })
 vim.keymap.set("v", "<leader>sp", function() pipeSelectionTo(fzfInProject) end, { desc = "Search current buffer" })
-vim.keymap.set("v", "<leader>sg", grepForThing, { desc = "Grep current root folder" })
-vim.keymap.set("n", "<leader>sg", "viw<leader>sg", { desc = "Grep for thing under cursor", remap = true })
+vim.keymap.set("v", "<leader>sg", function() grepForSelection(nil) end, { desc = "Grep current root folder" })
+vim.keymap.set("n", "<leader>sg", "viw<leader>sg", { desc = "Grep for word under cursor", remap = true })
+vim.keymap.set("n", "<leader>sG", function() vim.ui.input({ prompt = "Grep > " }, function(input) grepForWord(nil, input) end) end, { desc = "Grep in cwd for user input string "})
 
+-- buffer utilities
 vim.keymap.set("n", "<leader>by", "m'gg\"+yG''", { desc = "Yank Buffer" })
 vim.keymap.set("n", "<leader>bn", vim.cmd.bn, { desc = "Next buffer" })
 vim.keymap.set("n", "<leader>bp", vim.cmd.bp, { desc = "Previous buffer" })
 vim.keymap.set("n", "<leader>bk", killBuffer, { desc = "Kill current buffer" })
 
+-- edit utilities
 vim.keymap.set({"v", "n"}, "<leader>ep", "\"+p", { desc = "Paste from xClip" })
 vim.keymap.set({"v", "n"}, "<leader>ey", "\"+y", { desc = "Yank to xClip" })
 vim.keymap.set("x", "<leader>ep", "\"_dP", { desc = "Paste w/o overriding register" })
@@ -263,19 +273,19 @@ vim.keymap.set("v", "<leader>el", function() alignToCharacter(true) end, { desc 
 vim.keymap.set("n", "<leader>ec", "yyp<cmd>.!calc -p<enter>", { desc = "Perform math calculation on current line" })
 vim.keymap.set("n", "<leader>ek", "ky$jhp", { desc = "Copy from line above" })
 
+vim.keymap.set("n", "<A-k>", ":m .-2<cr>==", { desc = "Move line up", silent = true })
+vim.keymap.set("n", "<A-j>", ":m .+1<cr>==", { desc = "Move line down", silent = true })
+vim.keymap.set("v", "<A-k>", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
+vim.keymap.set("v", "<A-j>", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
+vim.keymap.set("v", ">", ">gv", { desc = "Indent deeper", silent = true })
+vim.keymap.set("v", "<", "<gv", { desc = "Indent shallower", silent = true })
+
+-- file utilities
 vim.keymap.set("n", "<leader>fs", "<cmd>w<cr>", { desc = "Save" })
 vim.keymap.set("n", "<leader>fS", "<cmd>wa<cr>", { desc = "Save all changes" })
 vim.keymap.set("n", "<leader>fc", "<cmd>e ~/.config/nvim/init.lua<cr>", { desc = "Open configuration" })
 
 vim.keymap.set("n", "<leader>of", vim.cmd.Ex, { desc = "Open file browser" })
-
-vim.keymap.set("n", "<A-k>", ":m .-2<cr>==", { desc = "Move line up", silent = true })
-vim.keymap.set("n", "<A-j>", ":m .+1<cr>==", { desc = "Move line down", silent = true })
-
-vim.keymap.set("v", "<A-k>", ":m '<-2<CR>gv=gv", { desc = "Move lines up", silent = true })
-vim.keymap.set("v", "<A-j>", ":m '>+1<CR>gv=gv", { desc = "Move lines down", silent = true })
-vim.keymap.set("v", ">", ">gv", { desc = "Indent deeper", silent = true })
-vim.keymap.set("v", "<", "<gv", { desc = "Indent shallower", silent = true })
 
 -- Navigation
 vim.keymap.set("i", "<C-e>", "<End>", { desc = "Go to line ending" })
@@ -315,6 +325,7 @@ if vim.g.purr_registered_commands == nil then
         pattern = "c",
         callback = function(env)
             vim.keymap.set("n", "<localleader>t", "<cmd>!ctags **.c **.h<cr>", { desc = "Setup ctags", buffer = env.bufnr })
+            vim.b.purr_default_grep_target = "**/*.c **/*.h"
         end
     })
 
@@ -327,6 +338,7 @@ if vim.g.purr_registered_commands == nil then
             vim.keymap.set("v", "<localleader>ss", function() pipeSelectionTo(function(sel) fzfInProject(sel, dir) end) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
             vim.keymap.set("n", "<localleader>sf", function() fzfProjectFiles(dir) end, { buffer = env.bufnr, desc = "Search for file in standard libraries" })
             vim.keymap.set("n", "<localleader>t", "<cmd>!ztags **.zig " .. home_dir .. "/opt/zig/lib/std/**.zig<cr>", { desc = "Setup ctags", buffer = env.bufnr })
+            vim.b.purr_default_grep_target = "**/*.zig"
         end
     })
 
@@ -338,6 +350,7 @@ if vim.g.purr_registered_commands == nil then
             vim.keymap.set("n", "<localleader>ss", function() fzfInProject(nil, dir) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
             vim.keymap.set("v", "<localleader>ss", function() pipeSelectionTo(function(sel) fzfInProject(sel, dir) end) end, { buffer = env.bufnr, desc = "Search text in standard libraries" })
             vim.keymap.set("n", "<localleader>sf", function() fzfProjectFiles(dir) end, { buffer = env.bufnr, desc = "Search for file in standard libraries" })
+            vim.b.purr_default_grep_target = "**/*.odin"
         end
     })
 
